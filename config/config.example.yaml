@@ -1,0 +1,121 @@
+# =====================================================
+# HotPlan - Configuration File
+# =====================================================
+# Copy this file to config.yaml and fill in your values
+# DO NOT commit config.yaml to version control!
+
+# Application Settings
+app:
+  name: "HotPlan"
+  version: "1.0.0"
+  timezone: "Europe/Bratislava"
+  locale: "sk_SK"
+  debug: false
+  log_level: "info"  # debug, info, warning, error
+
+# Database Configuration
+database:
+  type: "sqlite"  # sqlite, mysql, pgsql
+  path: "data/hotplan.db"  # For SQLite
+  # For other databases:
+  # host: "localhost"
+  # port: 3306
+  # name: "hotplan"
+  # username: ""
+  # password: ""
+
+# VoIP Device Configuration
+voip:
+  provider: "sipura"  # sipura, cisco, grandstream, generic
+  host: "10.11.49.84"
+  port: 80
+  path: "/admin/bsipura.spa"
+  timeout: 30
+  retry_count: 3
+  retry_delay: 5
+  
+  # Forwarding parameter name (varies by device)
+  forward_param: "43567"
+  forward_prefix: ""
+  
+  # Authentication - use secure storage for production!
+  # See credentials section below
+  auth_type: "digest"  # none, basic, digest
+
+# Default Forwarding Numbers
+defaults:
+  forward_internal: "100"
+  forward_external: "+421901234567"
+  forward_voicemail: "*97"
+  fallback: ""
+  
+# Behavior Settings
+behavior:
+  # What to do when no rule matches
+  # options: fallback, voicemail, nothing, last_known
+  on_no_rule: "fallback"
+  
+  # What to do on device error
+  # options: keep_last, clear, voicemail, nothing
+  on_device_error: "keep_last"
+  
+  # How to handle multiple matching rules
+  # options: priority, random, roundrobin, first_match
+  on_multiple_match: "priority"
+  
+  # Enable detailed logging
+  enable_logging: true
+  
+  # Log retention in days
+  log_retention_days: 90
+
+# Scheduler Settings
+scheduler:
+  enabled: true
+  check_interval: 60  # seconds
+  preload_minutes: 5   # activate rules this many minutes before
+  
+# Security
+security:
+  # Require authentication for API
+  api_auth_required: true
+
+  # Web GUI admin login
+  # Defaults: admin / admin (change for production!)
+  web_auth_required: true
+  web_admin_username: "admin"
+  web_admin_password: "admin"
+  
+  # Rate limiting
+  rate_limit_per_minute: 100
+  
+  # Allowed IPs for management (empty = all)
+  allowed_ips: []
+
+# Logging Configuration
+logging:
+  file: "logs/hotplan.log"
+  max_size: "10M"
+  max_files: 5
+  
+  # Separate log for device communication
+  device_log: "logs/device.log"
+  
+  # Separate log for audit trail
+  audit_log: "logs/audit.log"
+
+# =====================================================
+# SECURE CREDENTIALS
+# =====================================================
+# Credentials should be stored securely!
+# Options:
+# 1. Environment variables (recommended for production)
+# 2. Encrypted file with separate key
+# 3. HashiCorp Vault / AWS Secrets Manager integration
+#
+# Placeholder references - replace with actual values via env:
+credentials:
+  voip_username: "${VOIP_USERNAME}"
+  voip_password: "${VOIP_PASSWORD}"
+  
+# For development, you can set plain values (NOT for production!)

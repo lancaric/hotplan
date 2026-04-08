@@ -1,0 +1,37 @@
+{
+    "name": "hotplan/hotplan",
+    "description": "Flexible hotline forwarding management system for VoIP/PBX",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-pdo": "*",
+        "symfony/yaml": "6.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "HotPlan\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "HotPlan\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit tests",
+        "test-coverage": "vendor/bin/phpunit --coverage-html coverage",
+        "migrate": "php public/cli.php db:migrate",
+        "cli": "php public/cli.php"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
