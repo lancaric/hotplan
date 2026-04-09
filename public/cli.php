@@ -11,6 +11,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// Load environment variables from .env if present (optional).
+if (class_exists(\Dotenv\Dotenv::class)) {
+    $dotenvPath = dirname(__DIR__);
+    if (is_file($dotenvPath . '/.env')) {
+        // "Unsafe" loads into getenv()/putenv as well (needed because ConfigLoader uses getenv()).
+        \Dotenv\Dotenv::createUnsafeImmutable($dotenvPath)->safeLoad();
+    }
+}
+
 use HotPlan\Config\ConfigLoader;
 use HotPlan\Services\ForwardingService;
 use HotPlan\Scheduler\ForwardingScheduler;
