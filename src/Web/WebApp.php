@@ -317,10 +317,46 @@ final class WebApp
                 ];
             }
 
+            // CFWD segments for the day (helps visualize which rule is actually active)
+            $segments = [];
+            $windows = [
+                ['from' => '00:00', 'to' => '08:00', 'at' => [3, 0]],
+                ['from' => '08:00', 'to' => '16:00', 'at' => [12, 0]],
+                ['from' => '16:00', 'to' => '22:00', 'at' => [18, 0]],
+                ['from' => '22:00', 'to' => '24:00', 'at' => [23, 0]],
+            ];
+
+            foreach ($windows as $w) {
+                $at = $dt->setTime($w['at'][0], $w['at'][1], 0);
+                $decision = $this->decisionEngine->decide($at);
+                $segments[] = [
+                    'from' => $w['from'],
+                    'to' => $w['to'],
+                    'forward_to' => $decision->forwardTo ?? '',
+                    'reason' => $decision->reason,
+                    'rule' => $decision->matchedRule?->getName(),
+                ];
+            }
+
+            // Merge adjacent segments with the same decision
+            $merged = [];
+            foreach ($segments as $s) {
+                $lastIdx = count($merged) - 1;
+                if ($lastIdx >= 0) {
+                    $last = $merged[$lastIdx];
+                    if (($last['forward_to'] ?? '') === ($s['forward_to'] ?? '') && ($last['reason'] ?? '') === ($s['reason'] ?? '')) {
+                        $merged[$lastIdx]['to'] = $s['to'];
+                        continue;
+                    }
+                }
+                $merged[] = $s;
+            }
+
             $days[$dayKey] = [
                 'date' => $dt,
                 'holiday' => $holiday?->getName(),
                 'rotations' => $rot,
+                'segments' => $merged,
             ];
         }
 

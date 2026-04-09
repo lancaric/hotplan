@@ -40,6 +40,10 @@ try {
     $config = ConfigLoader::getInstance();
     // Web server can keep PHP process alive; always reload so config edits apply immediately.
     $config->reload();
+    $tz = (string) ($config->get('app.timezone', 'UTC') ?? 'UTC');
+    if ($tz !== '') {
+        date_default_timezone_set($tz);
+    }
     $db = Connection::getInstance();
 
     $ruleRepo = new RuleRepository($db);

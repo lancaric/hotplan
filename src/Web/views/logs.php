@@ -21,7 +21,7 @@ use HotPlan\Web\View;
   </form>
 </div>
 
-<div class="mono" style="white-space:pre-wrap;line-height:1.35;margin-top:10px">
+<textarea class="mono" style="white-space:pre-wrap;line-height:1.35;margin-top:10px" rows="10" readonly>
 <?= View::e(implode("\n", $logs)) ?>
-</div>
+</textarea>
 

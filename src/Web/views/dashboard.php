@@ -60,9 +60,9 @@ $reachable = (bool)($device['reachable'] ?? false);
 
   <div class="card" style="grid-column:span 12">
     <h2>Logy (posledné riadky)</h2>
-    <div class="mono" style="white-space:pre-wrap;line-height:1.35">
+    <textarea class="mono" style="white-space:pre-wrap;line-height:1.35" rows="10" readonly>
       <?= View::e(implode("\n", $logs)) ?>
-    </div>
+    </textarea>
   </div>
 </div>
 

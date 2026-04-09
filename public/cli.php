@@ -34,6 +34,17 @@ use HotPlan\Repositories\OnCallRepository;
 use HotPlan\Repositories\EmployeeRepository;
 use HotPlan\Logging\ForwardLogger;
 
+// Apply configured timezone as early as possible (affects DateTimeImmutable('now'), scheduling, etc.).
+try {
+    $cfg = ConfigLoader::getInstance();
+    $tz = (string) ($cfg->get('app.timezone', 'UTC') ?? 'UTC');
+    if ($tz !== '') {
+        date_default_timezone_set($tz);
+    }
+} catch (\Throwable) {
+    // Ignore timezone errors; CLI will fall back to php.ini/system timezone.
+}
+
 // Parse command line arguments
 $command = $argv[1] ?? 'help';
 $args = array_slice($argv, 2);

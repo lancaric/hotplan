@@ -64,6 +64,19 @@ $dows = ['Po', 'Ut', 'St', 'Št', 'Pi', 'So', 'Ne'];
               <?= View::e($r['employee'] ?? '-') ?>
             </div>
           <?php endforeach; ?>
+          <?php if (!empty($info['segments']) && is_array($info['segments'])): ?>
+            <div style="margin-top:6px;border-top:1px dashed var(--border);padding-top:6px">
+              <?php foreach ($info['segments'] as $s): ?>
+                <div>
+                  <span class="k"><?= View::e(($s['from'] ?? '') . '–' . ($s['to'] ?? '')) ?>:</span>
+                  <span class="mono"><?= View::e($s['forward_to'] ?? '') ?></span>
+                  <span class="muted">
+                    <?= View::e($s['rule'] ? (' · ' . $s['rule']) : (' · ' . ($s['reason'] ?? ''))) ?>
+                  </span>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
         <?php else: ?>
           <div class="muted">-</div>
         <?php endif; ?>
@@ -73,6 +86,5 @@ $dows = ['Po', 'Ut', 'St', 'Št', 'Pi', 'So', 'Ne'];
 </div>
 
 <div class="help" style="margin-top:10px">
-  Zobrazuje aktívne on-call rotácie (tab <span class="mono">On-call</span>). Ak nemáš nastavené rotácie, uvidíš prázdne polia.
+  Zobrazuje aktívne on-call rotácie (tab <span class="mono">On-call</span>) a zároveň aj CFWD rozhodnutia v typických oknách (00–08, 08–16, 16–22, 22–24).
 </div>
-
