@@ -29,6 +29,8 @@ if (PHP_SAPI === 'cli-server') {
 
 try {
     $config = ConfigLoader::getInstance();
+    // Web server can keep PHP process alive; always reload so config edits apply immediately.
+    $config->reload();
     $db = Connection::getInstance();
 
     $ruleRepo = new RuleRepository($db);
@@ -65,4 +67,3 @@ try {
     header('Content-Type: text/plain; charset=utf-8');
     echo "HotPlan Web error: " . $e->getMessage() . "\n";
 }
-

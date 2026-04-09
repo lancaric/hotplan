@@ -83,8 +83,10 @@ security:
   # Web GUI admin login
   # Defaults: admin / admin (change for production!)
   web_auth_required: true
-  web_admin_username: "admin"
-  web_admin_password: "admin"
+  # Prefer env vars in production:
+  #   HOTPLAN_ADMIN_USERNAME, HOTPLAN_ADMIN_PASSWORD
+  web_admin_username: "${HOTPLAN_ADMIN_USERNAME}"
+  web_admin_password: "${HOTPLAN_ADMIN_PASSWORD}"
   
   # Rate limiting
   rate_limit_per_minute: 100

@@ -17,9 +17,9 @@ class DeviceResponse
         public readonly array $metadata = [],
     ) {}
 
-    public static function success(?string $data = null, array $metadata = []): self
+    public static function success(?string $data = null, int $httpCode = 200, array $metadata = []): self
     {
-        return new self(true, $data, null, 200, $metadata);
+        return new self(true, $data, null, $httpCode, $metadata);
     }
 
     public static function error(string $error, int $httpCode = 500, ?string $data = null, array $metadata = []): self
@@ -48,4 +48,3 @@ class DeviceResponse
         ];
     }
 }
-

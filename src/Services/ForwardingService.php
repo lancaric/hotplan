@@ -196,8 +196,29 @@ class ForwardingService
             'forward_to' => $forwardTo,
             'device' => $this->voipProvider->getType(),
         ]);
-        
-        return $this->voipProvider->setForwardTo($forwardTo);
+
+        $resp = $this->voipProvider->setForwardTo($forwardTo);
+
+        $meta = $resp->metadata;
+        $meta['provider'] = $this->voipProvider->getType();
+        $meta['http_code'] = $resp->httpCode;
+
+        $this->logger->logDevice(
+            'set_forward',
+            $forwardTo,
+            $resp->isSuccess(),
+            $resp->error,
+            $meta
+        );
+
+        $this->logger->debug('Device response', [
+            'success' => $resp->success,
+            'http_code' => $resp->httpCode,
+            'error' => $resp->error,
+            'metadata' => $resp->metadata,
+        ]);
+
+        return $resp;
     }
     
     /**
@@ -229,6 +250,9 @@ class ForwardingService
             'reason' => $decision->reason,
             'device_success' => $deviceResponse?->isSuccess(),
             'device_error' => $deviceResponse?->error,
+            'device_http_code' => $deviceResponse?->httpCode,
+            'device_effective_url' => $deviceResponse?->metadata['effective_url'] ?? null,
+            'device_verified' => $deviceResponse?->metadata['verified'] ?? null,
             'consecutive_failures' => $this->consecutiveFailures,
         ]);
     }

@@ -45,7 +45,7 @@ class SipuraProvider extends AbstractVoIPProvider
 
         // Prefer simulating the HTML form submit; some firmwares ignore bare querystring updates.
         $submitted = $this->submitFormField($forwardParam, $value);
-        if ($submitted !== null) {
+        if ($submitted instanceof DeviceResponse) {
             return $submitted;
         }
 
@@ -67,7 +67,7 @@ class SipuraProvider extends AbstractVoIPProvider
         }
 
         $submitted = $this->submitFormField($forwardParam, '');
-        if ($submitted !== null) {
+        if ($submitted instanceof DeviceResponse) {
             return $submitted;
         }
 
@@ -81,11 +81,30 @@ class SipuraProvider extends AbstractVoIPProvider
         return $this->request('GET', $url);
     }
 
+    /**
+     * Try to submit via HTML form. Returns:
+     * - DeviceResponse on success or on a hard failure (auth/path errors)
+     * - null when form submit strategy isn't applicable (so caller may fallback)
+     */
     private function submitFormField(string $fieldName, string $fieldValue): ?DeviceResponse
     {
-        $page = $this->request('GET', $this->buildUrl());
-        if (!$page->isSuccess() || $page->data === null || $page->data === '') {
-            return null;
+        $pageUrl = $this->buildUrl();
+        $page = $this->request('GET', $pageUrl);
+        if (!$page->isSuccess()) {
+            return DeviceResponse::error(
+                "Failed to load Sipura config page (check voip.path/auth): {$page->error}",
+                $page->httpCode,
+                null,
+                array_merge($page->metadata, ['stage' => 'get_page'])
+            );
+        }
+        if ($page->data === null || $page->data === '') {
+            return DeviceResponse::error(
+                'Sipura config page returned empty body',
+                $page->httpCode,
+                null,
+                array_merge($page->metadata, ['stage' => 'get_page'])
+            );
         }
 
         $form = $this->parseFirstForm($page->data);
@@ -103,7 +122,10 @@ class SipuraProvider extends AbstractVoIPProvider
 
         $body = http_build_query($fields);
         $resp = $this->request('POST', $form['action'], [
-            'headers' => ['Content-Type: application/x-www-form-urlencoded'],
+            'headers' => [
+                'Content-Type: application/x-www-form-urlencoded',
+                "Referer: {$pageUrl}",
+            ],
             'body' => $body,
         ]);
 
@@ -118,7 +140,7 @@ class SipuraProvider extends AbstractVoIPProvider
             if (preg_match($pattern, $verify->data, $vm)) {
                 $currentValue = html_entity_decode((string) $vm[3], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 if ($currentValue === $fieldValue) {
-                    return DeviceResponse::success('applied', ['verified' => true]);
+                    return DeviceResponse::success('applied', 200, ['verified' => true]);
                 }
 
                 return DeviceResponse::error(
@@ -131,7 +153,7 @@ class SipuraProvider extends AbstractVoIPProvider
         }
 
         // Still report success if the device accepted the request; just signal not verified.
-        return DeviceResponse::success($resp->data, ['verified' => false]);
+        return DeviceResponse::success($resp->data, 200, ['verified' => false]);
     }
 
     /**
@@ -163,10 +185,14 @@ class SipuraProvider extends AbstractVoIPProvider
                     // Absolute path on same host
                     $action = $this->buildUrl($raw);
                 } else {
-                    // Relative path on same base
-                    $basePath = (string) ($this->config['path'] ?? '/');
-                    $baseDir = rtrim(str_replace('\\', '/', dirname($basePath)), '/');
-                    $action = $this->buildUrl($baseDir . '/' . $raw);
+                    // Relative path on same base. Resolve against the configured path as a directory when it ends with "/".
+                    $basePath = str_replace('\\', '/', (string) ($this->config['path'] ?? '/'));
+                    $baseDir = str_ends_with($basePath, '/')
+                        ? rtrim($basePath, '/')
+                        : rtrim(str_replace('\\', '/', dirname($basePath)), '/');
+
+                    $actionPath = rtrim($baseDir !== '' ? $baseDir : '/', '/') . '/' . ltrim($raw, '/');
+                    $action = $this->buildUrl($actionPath);
                 }
             }
         }

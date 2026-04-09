@@ -240,7 +240,7 @@ $config = [
     'port' => 80,
     'path' => '/admin/bsipura.spa',
     'username' => 'admin',
-    'password' => 'Apw44ai',
+    'password' => getenv('VOIP_PASSWORD') ?: 'your-voip-password',
     'forward_param' => '43567',
 ];
 

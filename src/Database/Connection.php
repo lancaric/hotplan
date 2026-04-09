@@ -82,7 +82,14 @@ class Connection
      */
     private function connectSqlite(array $config): void
     {
-        $path = $config['path'] ?? 'data/hotplan.db';
+        $path = (string) ($config['path'] ?? 'data/hotplan.db');
+
+        // Make relative paths deterministic (independent of current working directory),
+        // so CLI + web server always use the same DB file.
+        if (!preg_match('~^(?:[A-Za-z]:[\\\\/]|/)~', $path)) {
+            $projectRoot = dirname(__DIR__, 2);
+            $path = $projectRoot . '/' . ltrim($path, '/\\');
+        }
         
         // Ensure directory exists
         $dir = dirname($path);

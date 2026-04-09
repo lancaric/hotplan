@@ -1,0 +1,26 @@
+.env
+.env.*
+!.env.example
+
+# App runtime data
+/data/*.db
+/data/*.sqlite
+/data/*.sqlite3
+/logs/*.log
+/logs/*.log.*
+
+# Composer / PHP
+/vendor/
+composer.phar
+.phpunit.result.cache
+
+# Local config (keep config example committed)
+/config/config.yaml
+/config/config.*.yaml
+!/config/config.example.yaml
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

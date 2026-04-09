@@ -67,9 +67,17 @@ abstract class AbstractVoIPProvider implements VoIPProviderInterface
 
     public function testConnection(): DeviceResponse
     {
-        return $this->isReachable()
-            ? DeviceResponse::success('reachable')
-            : DeviceResponse::error('Device not reachable', 0);
+        if (!$this->isReachable()) {
+            return DeviceResponse::error('Device not reachable', 0);
+        }
+
+        // Try an authenticated GET against the configured path to validate auth/path.
+        $resp = $this->request('GET', $this->buildUrl());
+        if ($resp->isSuccess()) {
+            return DeviceResponse::success('ok', $resp->httpCode, $resp->metadata);
+        }
+
+        return $resp;
     }
 
     protected function buildUrl(?string $pathOverride = null, array $query = []): string
@@ -77,6 +85,12 @@ abstract class AbstractVoIPProvider implements VoIPProviderInterface
         $host = $this->config['host'] ?? 'localhost';
         $port = (int)($this->config['port'] ?? 80);
         $path = $pathOverride ?? ($this->config['path'] ?? '/');
+        if ($path === '') {
+            $path = '/';
+        }
+        if (!str_starts_with($path, '/')) {
+            $path = '/' . $path;
+        }
 
         $scheme = ($port === 443) ? 'https' : 'http';
         $base = "{$scheme}://{$host}:{$port}{$path}";
@@ -100,12 +114,27 @@ abstract class AbstractVoIPProvider implements VoIPProviderInterface
         $password = $this->config['password'] ?? null;
         $authType = strtolower((string)($this->config['auth_type'] ?? 'none'));
 
+        if ($authType !== 'none') {
+            $u = is_string($username) ? trim($username) : '';
+            $p = is_string($password) ? trim($password) : '';
+            if ($u === '' || $p === '') {
+                return DeviceResponse::error(
+                    'VoIP credentials missing (set credentials.voip_username / credentials.voip_password or HOTPLAN_VOIP_USERNAME/HOTPLAN_VOIP_PASSWORD)',
+                    401
+                );
+            }
+        }
+
         $curlOptions = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => $connectTimeout,
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_NOSIGNAL => true,
             CURLOPT_CUSTOMREQUEST => strtoupper($method),
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_ENCODING => '',
+            CURLOPT_USERAGENT => 'HotPlan/1.0',
         ];
 
         if (isset($options['headers'])) {
@@ -116,8 +145,8 @@ abstract class AbstractVoIPProvider implements VoIPProviderInterface
             $curlOptions[CURLOPT_POSTFIELDS] = $options['body'];
         }
 
-        if ($username !== null && $password !== null && $authType !== 'none') {
-            $curlOptions[CURLOPT_USERPWD] = $username . ':' . $password;
+        if ($authType !== 'none') {
+            $curlOptions[CURLOPT_USERPWD] = (string) $username . ':' . (string) $password;
             $curlOptions[CURLOPT_HTTPAUTH] = match ($authType) {
                 'basic' => CURLAUTH_BASIC,
                 'digest' => CURLAUTH_DIGEST,
@@ -129,16 +158,78 @@ abstract class AbstractVoIPProvider implements VoIPProviderInterface
 
         $body = curl_exec($ch);
         $curlErr = curl_error($ch);
+        $curlErrNo = (int) curl_errno($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $effectiveUrl = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        $totalTime = (float) curl_getinfo($ch, CURLINFO_TOTAL_TIME);
 
         if ($body === false) {
-            return DeviceResponse::error($curlErr ?: 'cURL error', $httpCode);
+            return DeviceResponse::error(
+                $curlErr ?: 'cURL error',
+                $httpCode,
+                null,
+                [
+                    'curl_errno' => $curlErrNo,
+                    'http_code' => $httpCode,
+                    'effective_url' => $effectiveUrl,
+                    'content_type' => $contentType,
+                    'total_time' => $totalTime,
+                ]
+            );
         }
+
+        $bodyStr = (string) $body;
+        $snippet = $this->snippetForLogs($bodyStr);
+        $metadata = [
+            'http_code' => $httpCode,
+            'effective_url' => $effectiveUrl,
+            'content_type' => $contentType,
+            'total_time' => $totalTime,
+            'body_len' => strlen($bodyStr),
+            'body_snippet' => $snippet,
+        ];
 
         if ($httpCode >= 400 || $httpCode === 0) {
-            return DeviceResponse::error("HTTP {$httpCode}", $httpCode, (string)$body);
+            $msg = $this->extractHttpErrorMessage($httpCode, $bodyStr) ?? "HTTP {$httpCode}";
+            return DeviceResponse::error($msg, $httpCode, null, $metadata);
         }
 
-        return DeviceResponse::success((string)$body, ['http_code' => $httpCode]);
+        // Some firmwares respond with HTTP 200 but show a "Login denied" page.
+        if ($authType !== 'none') {
+            $text = preg_replace('/\\s+/', ' ', strip_tags($bodyStr)) ?? '';
+            if (preg_match('/\\bLogin\\s+denied\\b/i', $text)) {
+                return DeviceResponse::error('Login denied (wrong username/password or auth_type)', 401, null, $metadata);
+            }
+        }
+
+        return DeviceResponse::success($bodyStr, $httpCode, $metadata);
+    }
+
+    private function snippetForLogs(string $body, int $maxLen = 300): string
+    {
+        $text = trim(preg_replace('/\\s+/', ' ', strip_tags($body)) ?? '');
+        if ($text === '') {
+            $text = trim(preg_replace('/\\s+/', ' ', $body) ?? '');
+        }
+        if (strlen($text) <= $maxLen) {
+            return $text;
+        }
+        return substr($text, 0, $maxLen) . '…';
+    }
+
+    private function extractHttpErrorMessage(int $httpCode, string $body): ?string
+    {
+        $text = preg_replace('/\\s+/', ' ', strip_tags($body)) ?? '';
+        if (preg_match('/\\bLogin\\s+denied\\b/i', $text)) {
+            return 'Login denied (wrong username/password or auth_type)';
+        }
+        if ($httpCode === 401) {
+            return 'Unauthorized (check username/password and auth_type)';
+        }
+        if ($httpCode === 404) {
+            return 'Not Found (check voip.path)';
+        }
+        return null;
     }
 }

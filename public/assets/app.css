@@ -39,4 +39,6 @@ textarea{min-height:140px;font-family:ui-monospace,SFMono-Regular,Consolas,Monac
 .k{color:var(--muted);font-size:12px}
 .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Monaco,monospace}
 .main{display:flex;flex-direction:column;gap:12px}
+.hidden{display:none !important}
+.table-wrap{overflow:auto}
 @media (max-width:920px){.topbar{flex-direction:column;align-items:stretch}.user{justify-content:flex-start}}

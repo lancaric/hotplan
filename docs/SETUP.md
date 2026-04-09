@@ -63,13 +63,13 @@ Create a credentials file (recommended) or use environment variables:
 **Option A: Environment Variables**
 ```bash
 export VOIP_USERNAME="admin"
-export VOIP_PASSWORD="Apw44ai"
+export VOIP_PASSWORD="your-voip-password"
 ```
 
 PowerShell alternative:
 ```powershell
 $env:VOIP_USERNAME="admin"
-$env:VOIP_PASSWORD="Apw44ai"
+$env:VOIP_PASSWORD="your-voip-password"
 ```
 
 **Option B: Credentials File**
@@ -77,7 +77,7 @@ $env:VOIP_PASSWORD="Apw44ai"
 # Edit config/config.yaml
 credentials:
   voip_username: "admin"
-  voip_password: "Apw44ai"
+  voip_password: "your-voip-password"
 ```
 
 ### 5. Initialize Database

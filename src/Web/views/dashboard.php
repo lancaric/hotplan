@@ -25,8 +25,9 @@ $reachable = (bool)($device['reachable'] ?? false);
       <span class="muted"><?= View::e((string)($device['path'] ?? '')) ?></span>
     </div>
   </div>
-  <form method="post" action="/actions/run-cycle">
+  <form method="post" action="/actions/run-cycle" class="row" style="gap:8px">
     <button class="btn primary" type="submit">Spustiť cycle</button>
+    <button class="btn" type="submit" name="force" value="1" title="Ignoruje zmenu detekcie (vynúti odoslanie na zariadenie)">Force</button>
   </form>
 </div>
 

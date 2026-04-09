@@ -18,6 +18,7 @@ use HotPlan\Services\ForwardingService;
 
 final class WebApp
 {
+
     public function __construct(
         private readonly ConfigLoader $config,
         private readonly Connection $db,
@@ -213,6 +214,38 @@ final class WebApp
         }
     }
 
+    private function normalizeDateTime(?string $raw): ?string
+    {
+        $v = trim((string) $raw);
+        if ($v === '') {
+            return null;
+        }
+
+        // HTML datetime-local: "YYYY-MM-DDTHH:MM" (optionally with seconds)
+        $v = str_replace('T', ' ', $v);
+
+        // Add seconds if missing
+        if (preg_match('/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/', $v)) {
+            $v .= ':00';
+        }
+
+        return $v;
+    }
+
+    private function normalizeTime(?string $raw): ?string
+    {
+        $v = trim((string) $raw);
+        if ($v === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{2}:\d{2}$/', $v)) {
+            return $v . ':00';
+        }
+
+        return $v;
+    }
+
     // ---------------- Pages ----------------
 
     private function pageDashboard(): void
@@ -315,10 +348,20 @@ final class WebApp
 
         $groups = $this->db->fetchAll('SELECT * FROM rotation_groups ORDER BY name');
 
-        $this->layout('Zamestnanci', function () use ($employees, $groups) {
+        $editId = (int) ($_GET['edit'] ?? 0);
+        $editEmployee = null;
+        if ($editId > 0) {
+            $editEmployee = $this->db->fetch('SELECT * FROM employees WHERE id = ? LIMIT 1', [$editId]);
+        }
+
+        $showForm = $editId > 0 || isset($_GET['add']);
+
+        $this->layout('Zamestnanci', function () use ($employees, $groups, $editEmployee, $showForm) {
             View::render('employees.php', [
                 'employees' => $employees,
                 'groups' => $groups,
+                'editEmployee' => $editEmployee,
+                'showForm' => $showForm,
                 'flash' => $this->consumeFlash(),
             ]);
         });
@@ -329,14 +372,23 @@ final class WebApp
         $rules = $this->db->fetchAll('SELECT * FROM forwarding_rules ORDER BY priority ASC');
         $employees = $this->db->fetchAll('SELECT id,name FROM employees WHERE is_active = 1 ORDER BY name');
         $groups = $this->db->fetchAll('SELECT id,name FROM rotation_groups ORDER BY name');
+
         $holidays = $this->db->fetchAll('SELECT id,name,date FROM holidays ORDER BY date DESC');
 
-        $this->layout('Pravidlá', function () use ($rules, $employees, $groups, $holidays) {
+        $editId = (int) ($_GET['edit'] ?? 0);
+        $editRule = $editId > 0
+            ? $this->db->fetch('SELECT * FROM forwarding_rules WHERE id = ? LIMIT 1', [$editId])
+            : null;
+        $showForm = $editId > 0 || isset($_GET['add']);
+
+        $this->layout('Pravidlá', function () use ($rules, $employees, $groups, $holidays, $editRule, $showForm) {
             View::render('rules.php', [
                 'rules' => $rules,
                 'employees' => $employees,
                 'groups' => $groups,
                 'holidays' => $holidays,
+                'editRule' => $editRule,
+                'showForm' => $showForm,
                 'flash' => $this->consumeFlash(),
             ]);
         });
@@ -356,9 +408,18 @@ final class WebApp
     private function pageHolidays(): void
     {
         $holidays = $this->db->fetchAll('SELECT * FROM holidays ORDER BY date DESC');
-        $this->layout('Sviatky', function () use ($holidays) {
+
+        $editId = (int) ($_GET['edit'] ?? 0);
+        $editHoliday = $editId > 0
+            ? $this->db->fetch('SELECT * FROM holidays WHERE id = ? LIMIT 1', [$editId])
+            : null;
+        $showForm = $editId > 0 || isset($_GET['add']);
+
+        $this->layout('Sviatky', function () use ($holidays, $editHoliday, $showForm) {
             View::render('holidays.php', [
                 'holidays' => $holidays,
+                'editHoliday' => $editHoliday,
+                'showForm' => $showForm,
                 'flash' => $this->consumeFlash(),
             ]);
         });
@@ -366,10 +427,20 @@ final class WebApp
 
     private function pageWorkingHours(): void
     {
-        $rows = $this->db->fetchAll('SELECT * FROM working_hours WHERE is_active = 1 ORDER BY day_of_week ASC');
-        $this->layout('Pracovné hodiny', function () use ($rows) {
+        $repo = new WorkingHoursRepository($this->db);
+        $rows = array_map(static fn($w) => $w->toArray(), $repo->findWeekSchedule());
+
+        $editId = (int) ($_GET['edit'] ?? 0);
+        $editRow = $editId > 0
+            ? $this->db->fetch('SELECT * FROM working_hours WHERE id = ? LIMIT 1', [$editId])
+            : null;
+        $showForm = $editId > 0 || isset($_GET['add']);
+
+        $this->layout('Pracovné hodiny', function () use ($rows, $editRow, $showForm) {
             View::render('working_hours.php', [
                 'rows' => $rows,
+                'editRow' => $editRow,
+                'showForm' => $showForm,
                 'flash' => $this->consumeFlash(),
             ]);
         });
@@ -379,10 +450,19 @@ final class WebApp
     {
         $rotations = $this->db->fetchAll('SELECT * FROM oncall_rotations ORDER BY is_active DESC, name');
         $groups = $this->db->fetchAll('SELECT id,name FROM rotation_groups ORDER BY name');
-        $this->layout('On-call rotácie', function () use ($rotations, $groups) {
+
+        $editId = (int) ($_GET['edit'] ?? 0);
+        $editRotation = $editId > 0
+            ? $this->db->fetch('SELECT * FROM oncall_rotations WHERE id = ? LIMIT 1', [$editId])
+            : null;
+        $showForm = $editId > 0 || isset($_GET['add']);
+
+        $this->layout('On-call rotácie', function () use ($rotations, $groups, $editRotation, $showForm) {
             View::render('oncall.php', [
                 'rotations' => $rotations,
                 'groups' => $groups,
+                'editRotation' => $editRotation,
+                'showForm' => $showForm,
                 'flash' => $this->consumeFlash(),
             ]);
         });
@@ -391,9 +471,18 @@ final class WebApp
     private function pageGroups(): void
     {
         $groups = $this->db->fetchAll('SELECT * FROM rotation_groups ORDER BY name');
-        $this->layout('Skupiny', function () use ($groups) {
+
+        $editId = (int) ($_GET['edit'] ?? 0);
+        $editGroup = $editId > 0
+            ? $this->db->fetch('SELECT * FROM rotation_groups WHERE id = ? LIMIT 1', [$editId])
+            : null;
+        $showForm = $editId > 0 || isset($_GET['add']);
+
+        $this->layout('Skupiny', function () use ($groups, $editGroup, $showForm) {
             View::render('groups.php', [
                 'groups' => $groups,
+                'editGroup' => $editGroup,
+                'showForm' => $showForm,
                 'flash' => $this->consumeFlash(),
             ]);
         });
@@ -497,11 +586,11 @@ final class WebApp
             'rule_type' => (string) ($_POST['rule_type'] ?? 'fallback'),
             'priority' => (int) ($_POST['priority'] ?? 100),
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
-            'valid_from' => trim((string) ($_POST['valid_from'] ?? '')) ?: null,
-            'valid_until' => trim((string) ($_POST['valid_until'] ?? '')) ?: null,
+            'valid_from' => $this->normalizeDateTime($_POST['valid_from'] ?? null),
+            'valid_until' => $this->normalizeDateTime($_POST['valid_until'] ?? null),
             'days_of_week' => $daysJson,
-            'start_time' => trim((string) ($_POST['start_time'] ?? '')) ?: null,
-            'end_time' => trim((string) ($_POST['end_time'] ?? '')) ?: null,
+            'start_time' => $this->normalizeTime($_POST['start_time'] ?? null),
+            'end_time' => $this->normalizeTime($_POST['end_time'] ?? null),
             'forward_to' => trim((string) ($_POST['forward_to'] ?? '')),
             'target_type' => (string) ($_POST['target_type'] ?? 'number'),
             'target_employee_id' => ($_POST['target_employee_id'] ?? '') !== '' ? (int) $_POST['target_employee_id'] : null,
@@ -544,14 +633,31 @@ final class WebApp
 
     private function actionOverrideCreate(): void
     {
+        $startsAt = $this->normalizeDateTime($_POST['starts_at'] ?? null);
+        $endsAt = $this->normalizeDateTime($_POST['ends_at'] ?? null);
+        $expiresAt = $this->normalizeDateTime($_POST['expires_at'] ?? null);
+
+        // UX-friendly defaults:
+        // - if user fills "expires_at", treat it as "until time"
+        // - otherwise treat override as indefinite
+        $overrideType = (string) ($_POST['override_type'] ?? '');
+        if ($overrideType === '') {
+            $overrideType = $expiresAt !== null ? 'until_time' : 'indefinite';
+        }
+
+        // If only expires_at was provided, map it to ends_at as well (safe for legacy queries).
+        if ($endsAt === null && $expiresAt !== null) {
+            $endsAt = $expiresAt;
+        }
+
         $data = [
-            'override_type' => (string) ($_POST['override_type'] ?? 'temporary'),
+            'override_type' => $overrideType,
             'is_active' => 1,
-            'starts_at' => trim((string) ($_POST['starts_at'] ?? '')) ?: null,
-            'ends_at' => trim((string) ($_POST['ends_at'] ?? '')) ?: null,
+            'starts_at' => $startsAt,
+            'ends_at' => $endsAt,
             'forward_to' => trim((string) ($_POST['forward_to'] ?? '')),
             'reason' => trim((string) ($_POST['reason'] ?? '')) ?: null,
-            'expires_at' => trim((string) ($_POST['expires_at'] ?? '')) ?: null,
+            'expires_at' => $expiresAt,
         ];
 
         if ($data['forward_to'] === '') {
@@ -618,28 +724,32 @@ final class WebApp
 
     private function actionWorkingHoursSave(): void
     {
+        $id = isset($_POST['id']) && $_POST['id'] !== '' ? (int) $_POST['id'] : null;
         $day = (int) ($_POST['day_of_week'] ?? -1);
         if ($day < 0 || $day > 6) {
             throw new \RuntimeException('Invalid day_of_week');
         }
 
-        $row = $this->db->fetch('SELECT id FROM working_hours WHERE day_of_week = ? AND is_active = 1 LIMIT 1', [$day]);
-
         $data = [
             'day_of_week' => $day,
             'is_working_day' => isset($_POST['is_working_day']) ? 1 : 0,
-            'start_time' => trim((string) ($_POST['start_time'] ?? '00:00')),
-            'end_time' => trim((string) ($_POST['end_time'] ?? '00:00')),
+            'start_time' => $this->normalizeTime((string) ($_POST['start_time'] ?? '00:00')) ?? '00:00:00',
+            'end_time' => $this->normalizeTime((string) ($_POST['end_time'] ?? '00:00')) ?? '00:00:00',
             'forward_to_internal' => trim((string) ($_POST['forward_to_internal'] ?? '')) ?: null,
             'forward_to_external' => trim((string) ($_POST['forward_to_external'] ?? '')) ?: null,
             'is_active' => 1,
         ];
 
         $repo = new WorkingHoursRepository($this->db);
-        if ($row === null) {
-            $repo->create($data);
+        if ($id !== null && $id > 0) {
+            $repo->updateHours($id, $data);
         } else {
-            $repo->updateHours((int) $row['id'], $data);
+            $row = $this->db->fetch('SELECT id FROM working_hours WHERE day_of_week = ? AND is_active = 1 LIMIT 1', [$day]);
+            if ($row === null) {
+                $repo->create($data);
+            } else {
+                $repo->updateHours((int) $row['id'], $data);
+            }
         }
 
         $this->flash('ok', 'Working hours saved');
@@ -657,8 +767,8 @@ final class WebApp
             'rotation_start_date' => trim((string) ($_POST['rotation_start_date'] ?? '')),
             'rotation_direction' => (string) ($_POST['rotation_direction'] ?? 'forward'),
             'is_24x7' => isset($_POST['is_24x7']) ? 1 : 0,
-            'default_start_time' => trim((string) ($_POST['default_start_time'] ?? '')) ?: null,
-            'default_end_time' => trim((string) ($_POST['default_end_time'] ?? '')) ?: null,
+            'default_start_time' => $this->normalizeTime($_POST['default_start_time'] ?? null),
+            'default_end_time' => $this->normalizeTime($_POST['default_end_time'] ?? null),
             'during_hours_forward_to' => trim((string) ($_POST['during_hours_forward_to'] ?? '')) ?: null,
             'after_hours_forward_to' => trim((string) ($_POST['after_hours_forward_to'] ?? '')) ?: null,
             'use_employee_mobile' => isset($_POST['use_employee_mobile']) ? 1 : 0,

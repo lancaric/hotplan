@@ -204,6 +204,11 @@ class DecisionEngine
         if ($rotation === null) {
             return null;
         }
+
+        // Rotation exists, but may only be active in a specific time window.
+        if (!$rotation->isInActiveWindow($dateTime)) {
+            return null;
+        }
         
         $group = $rotation->getGroupId();
         $employees = $this->employeeRepository->findByRotationGroup($group);
@@ -273,9 +278,19 @@ class DecisionEngine
      */
     private function resolveOnCall(DecisionContext $context): ?DecisionResult
     {
+        // By default, on-call rotation is intended for after-hours coverage.
+        // Working-hours forwarding is handled by the working_hours schedule.
+        if ($context->isWorkingHours) {
+            return null;
+        }
+
         $rotation = $this->onCallRepository->findActiveForDateTime($context->dateTime);
         
         if ($rotation === null) {
+            return null;
+        }
+
+        if (!$rotation->isInActiveWindow($context->dateTime)) {
             return null;
         }
         

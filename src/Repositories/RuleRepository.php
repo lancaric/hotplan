@@ -49,7 +49,7 @@ class RuleRepository extends BaseRepository
     public function findMatchingRules(\DateTimeImmutable $dateTime): array
     {
         $dateStr = $dateTime->format('Y-m-d H:i:s');
-        $dayOfWeek = $dateTime->format('w');
+        $dayOfWeek = (int) $dateTime->format('w');
         $timeStr = $dateTime->format('H:i:s');
         
         // Find rules that are active and within their time window
@@ -69,8 +69,14 @@ class RuleRepository extends BaseRepository
             
             // Check day of week if specified
             $daysOfWeek = $rule->getDaysOfWeek();
-            if ($daysOfWeek !== null && !in_array($dayOfWeek, $daysOfWeek, true)) {
-                continue;
+            if ($daysOfWeek !== null) {
+                $normalizedDays = array_map(
+                    static fn($day) => is_numeric($day) ? (int) $day : $day,
+                    $daysOfWeek
+                );
+                if (!in_array($dayOfWeek, $normalizedDays, true)) {
+                    continue;
+                }
             }
             
             // Check time range if specified

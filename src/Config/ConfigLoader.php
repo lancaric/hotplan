@@ -193,9 +193,36 @@ class ConfigLoader
      */
     public function getVoipCredentials(): array
     {
+        $envUsername = getenv('HOTPLAN_VOIP_USERNAME');
+        if ($envUsername === false) {
+            $envUsername = getenv('VOIP_USERNAME');
+        }
+        $envPassword = getenv('HOTPLAN_VOIP_PASSWORD');
+        if ($envPassword === false) {
+            $envPassword = getenv('VOIP_PASSWORD');
+        }
+
+        $username = (string) $this->get('credentials.voip_username', '');
+        $password = (string) $this->get('credentials.voip_password', '');
+
+        // Convenience fallbacks (useful in development / older configs)
+        if ($username === '') {
+            $username = (string) $this->get('voip.username', '');
+        }
+        if ($password === '') {
+            $password = (string) $this->get('voip.password', '');
+        }
+
+        if ($username === '' && $envUsername !== false) {
+            $username = (string) $envUsername;
+        }
+        if ($password === '' && $envPassword !== false) {
+            $password = (string) $envPassword;
+        }
+
         return [
-            'username' => $this->get('credentials.voip_username', ''),
-            'password' => $this->get('credentials.voip_password', ''),
+            'username' => $username,
+            'password' => $password,
         ];
     }
     
