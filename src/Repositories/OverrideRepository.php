@@ -81,14 +81,32 @@ class OverrideRepository extends BaseRepository
             WHERE is_active = 1
             AND (
                 override_type = ?
-                OR ends_at IS NULL
-                OR ends_at >= ?
-                OR expires_at >= ?
+                OR (
+                    override_type IN (?, ?)
+                    AND (starts_at IS NULL OR starts_at <= ?)
+                    AND (
+                        (ends_at IS NOT NULL AND ends_at >= ?)
+                        OR (ends_at IS NULL AND expires_at IS NOT NULL AND expires_at >= ?)
+                    )
+                )
+                OR (
+                    override_type = ?
+                    AND (starts_at IS NULL OR starts_at <= ?)
+                )
             )
             ORDER BY created_at DESC
         ";
         
-        $rows = $this->db->fetchAll($sql, [OverrideType::INDEFINITE, $now, $now]);
+        $rows = $this->db->fetchAll($sql, [
+            OverrideType::INDEFINITE,
+            OverrideType::TEMPORARY,
+            OverrideType::UNTIL_TIME,
+            $now,
+            $now,
+            $now,
+            OverrideType::UNTIL_EMPLOYEE,
+            $now,
+        ]);
         return array_map(fn($row) => OverrideRule::fromArray($row), $rows);
     }
     
@@ -114,8 +132,18 @@ class OverrideRepository extends BaseRepository
             AND source_employee_id = ?
             AND (
                 override_type = ?
-                OR ends_at >= ?
-                OR expires_at >= ?
+                OR (
+                    override_type IN (?, ?)
+                    AND (starts_at IS NULL OR starts_at <= ?)
+                    AND (
+                        (ends_at IS NOT NULL AND ends_at >= ?)
+                        OR (ends_at IS NULL AND expires_at IS NOT NULL AND expires_at >= ?)
+                    )
+                )
+                OR (
+                    override_type = ?
+                    AND (starts_at IS NULL OR starts_at <= ?)
+                )
             )
             ORDER BY created_at DESC
             LIMIT 1
@@ -123,8 +151,13 @@ class OverrideRepository extends BaseRepository
         
         $row = $this->db->fetch($sql, [
             $employeeId,
-            OverrideType::UNTIL_EMPLOYEE,
+            OverrideType::INDEFINITE,
+            OverrideType::TEMPORARY,
+            OverrideType::UNTIL_TIME,
             $now,
+            $now,
+            $now,
+            OverrideType::UNTIL_EMPLOYEE,
             $now,
         ]);
         
