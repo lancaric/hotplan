@@ -39,11 +39,16 @@ class OverrideRepository extends BaseRepository
             AND (
                 override_type = ?
                 OR (
-                    (starts_at IS NULL OR starts_at <= ?)
-                    AND (ends_at IS NULL OR ends_at >= ?)
+                    override_type IN (?, ?)
+                    AND (starts_at IS NULL OR starts_at <= ?)
+                    AND (
+                        (ends_at IS NOT NULL AND ends_at >= ?)
+                        OR (ends_at IS NULL AND expires_at IS NOT NULL AND expires_at >= ?)
+                    )
                 )
                 OR (
-                    (expires_at IS NULL OR expires_at >= ?)
+                    override_type = ?
+                    AND (starts_at IS NULL OR starts_at <= ?)
                 )
             )
             ORDER BY created_at DESC
@@ -52,8 +57,12 @@ class OverrideRepository extends BaseRepository
         
         $row = $this->db->fetch($sql, [
             OverrideType::INDEFINITE,
+            OverrideType::TEMPORARY,
+            OverrideType::UNTIL_TIME,
             $dateStr,
             $dateStr,
+            $dateStr,
+            OverrideType::UNTIL_EMPLOYEE,
             $dateStr,
         ]);
         
@@ -127,7 +136,9 @@ class OverrideRepository extends BaseRepository
      */
     public function createOverride(array $data): OverrideRule
     {
-        $id = parent::insert($data);
+        unset($data['id'], $data['updated_at']);
+        $data['created_at'] = date('Y-m-d H:i:s');
+        $id = $this->db->insert($this->table, $data);
         return $this->findById($id);
     }
     
@@ -174,7 +185,7 @@ class OverrideRepository extends BaseRepository
      */
     public function deactivate(int $id): bool
     {
-        return parent::update($id, ['is_active' => 0]);
+        return $this->db->update($this->table, ['is_active' => 0], 'id = ?', [$id]) > 0;
     }
     
     /**

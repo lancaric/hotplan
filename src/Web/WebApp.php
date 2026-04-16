@@ -180,11 +180,17 @@ final class WebApp
             case '/overrides/create':
                 $this->actionOverrideCreate();
                 return;
+            case '/calendar/create':
+                $this->actionCalendarCreate();
+                return;
             case '/overrides/clear':
                 $this->actionOverrideClearAll();
                 return;
             case '/holidays/save':
                 $this->actionHolidaySave();
+                return;
+            case '/holidays/import-sk':
+                $this->actionHolidayImportSk();
                 return;
             case '/holidays/delete':
                 $this->actionHolidayDelete();
@@ -300,6 +306,11 @@ final class WebApp
         $employeeRepo = new EmployeeRepository($this->db);
         $holidayRepo = new HolidayRepository($this->db);
         $rotations = $onCallRepo->findAllActive();
+        $employeeOptions = $this->buildCalendarEmployeeOptions();
+
+        $monthStart = $first->setTime(0, 0, 0);
+        $monthEnd = $first->setDate($year, $month, $daysInMonth)->setTime(23, 59, 59);
+        $calendarEvents = $this->loadCalendarEvents($monthStart, $monthEnd, $employeeOptions);
 
         $days = [];
         for ($d = 1; $d <= $daysInMonth; $d++) {
@@ -357,6 +368,7 @@ final class WebApp
                 'holiday' => $holiday?->getName(),
                 'rotations' => $rot,
                 'segments' => $merged,
+                'events' => $calendarEvents[$dayKey] ?? [],
             ];
         }
 
@@ -372,6 +384,7 @@ final class WebApp
                 'days' => $days,
                 'prev' => $prev,
                 'next' => $next,
+                'employees' => $this->buildCalendarEmployeeOptions(),
                 'flash' => $this->consumeFlash(),
             ]);
         });
@@ -758,6 +771,15 @@ final class WebApp
         $this->redirect('/holidays');
     }
 
+    private function actionHolidayImportSk(): void
+    {
+        $yearFrom = 2020;
+        $yearTo = 2035;
+        $created = $this->importSlovakHolidays($yearFrom, $yearTo);
+        $this->flash('ok', sprintf('Import slovenskych sviatkov dokoncený (%d novych zaznamov)', $created));
+        $this->redirect('/holidays');
+    }
+
     private function actionWorkingHoursSave(): void
     {
         $id = isset($_POST['id']) && $_POST['id'] !== '' ? (int) $_POST['id'] : null;
@@ -921,6 +943,541 @@ final class WebApp
         $this->db->delete('rotation_groups', 'id = ?', [$id]);
         $this->flash('ok', 'Group deleted');
         $this->redirect('/groups');
+    }
+
+    private function importSlovakHolidays(int $yearFrom, int $yearTo): int
+    {
+        $created = 0;
+        $fixed = [
+            ['name' => 'Deň vzniku Slovenskej republiky', 'month_day' => '01-01'],
+            ['name' => 'Zjavenie Pána', 'month_day' => '01-06'],
+            ['name' => 'Sviatok práce', 'month_day' => '05-01'],
+            ['name' => 'Deň víťazstva nad fašizmom', 'month_day' => '05-08'],
+            ['name' => 'Sviatok svätého Cyrila a Metoda', 'month_day' => '07-05'],
+            ['name' => 'Výročie SNP', 'month_day' => '08-29'],
+            ['name' => 'Deň Ústavy Slovenskej republiky', 'month_day' => '09-01'],
+            ['name' => 'Sedembolestná Panna Mária', 'month_day' => '09-15'],
+            ['name' => 'Sviatok všetkých svätých', 'month_day' => '11-01'],
+            ['name' => 'Deň boja za slobodu a demokraciu', 'month_day' => '11-17'],
+            ['name' => 'Štedrý deň', 'month_day' => '12-24'],
+            ['name' => 'Prvý sviatok vianočný', 'month_day' => '12-25'],
+            ['name' => 'Druhý sviatok vianočný', 'month_day' => '12-26'],
+        ];
+
+        foreach ($fixed as $holiday) {
+            $date = '2000-' . $holiday['month_day'];
+            $created += $this->upsertHolidayRecord([
+                'name' => $holiday['name'],
+                'date' => $date,
+                'is_recurring' => 1,
+                'country' => 'SK',
+                'region' => null,
+                'forward_to' => null,
+                'is_workday' => 0,
+                'priority' => 50,
+                'is_active' => 1,
+            ]);
+        }
+
+        for ($year = $yearFrom; $year <= $yearTo; $year++) {
+            $easterSunday = $this->calculateEasterSunday($year);
+            $goodFriday = $easterSunday->modify('-2 days');
+            $easterMonday = $easterSunday->modify('+1 day');
+
+            $created += $this->upsertHolidayRecord([
+                'name' => 'Veľký piatok',
+                'date' => $goodFriday->format('Y-m-d'),
+                'is_recurring' => 0,
+                'country' => 'SK',
+                'region' => null,
+                'forward_to' => null,
+                'is_workday' => 0,
+                'priority' => 50,
+                'is_active' => 1,
+            ]);
+
+            $created += $this->upsertHolidayRecord([
+                'name' => 'Veľkonočný pondelok',
+                'date' => $easterMonday->format('Y-m-d'),
+                'is_recurring' => 0,
+                'country' => 'SK',
+                'region' => null,
+                'forward_to' => null,
+                'is_workday' => 0,
+                'priority' => 50,
+                'is_active' => 1,
+            ]);
+        }
+
+        return $created;
+    }
+
+    private function upsertHolidayRecord(array $data): int
+    {
+        $existing = $this->db->fetch(
+            'SELECT id FROM holidays WHERE date = ? AND ((country = ? ) OR (country IS NULL AND ? IS NULL)) AND ((region = ?) OR (region IS NULL AND ? IS NULL)) LIMIT 1',
+            [$data['date'], $data['country'], $data['country'], $data['region'], $data['region']]
+        );
+
+        $repo = new HolidayRepository($this->db);
+        if ($existing !== null) {
+            $repo->updateHoliday((int) $existing['id'], $data);
+            return 0;
+        }
+
+        $repo->create($data);
+        return 1;
+    }
+
+    private function calculateEasterSunday(int $year): \DateTimeImmutable
+    {
+        $a = $year % 19;
+        $b = intdiv($year, 100);
+        $c = $year % 100;
+        $d = intdiv($b, 4);
+        $e = $b % 4;
+        $f = intdiv($b + 8, 25);
+        $g = intdiv($b - $f + 1, 3);
+        $h = (19 * $a + $b - $d - $g + 15) % 30;
+        $i = intdiv($c, 4);
+        $k = $c % 4;
+        $l = (32 + 2 * $e + 2 * $i - $h - $k) % 7;
+        $m = intdiv($a + 11 * $h + 22 * $l, 451);
+        $month = intdiv($h + $l - 7 * $m + 114, 31);
+        $day = (($h + $l - 7 * $m + 114) % 31) + 1;
+
+        return new \DateTimeImmutable(sprintf('%04d-%02d-%02d 00:00:00', $year, $month, $day));
+    }
+
+    private function actionCalendarCreate(): void
+    {
+        $selectionStart = trim((string) ($_POST['selection_start'] ?? ''));
+        $selectionEnd = trim((string) ($_POST['selection_end'] ?? ''));
+        $ym = trim((string) ($_POST['ym'] ?? date('Y-m')));
+        $actionMode = trim((string) ($_POST['action_mode'] ?? 'add'));
+        $eventRefsRaw = trim((string) ($_POST['event_refs'] ?? '[]'));
+        $selectionEventsRaw = trim((string) ($_POST['selection_events_data'] ?? '[]'));
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectionStart) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectionEnd)) {
+            throw new \RuntimeException('Invalid calendar range');
+        }
+
+        $rangeStart = new \DateTimeImmutable($selectionStart . ' 00:00:00');
+        $rangeEnd = new \DateTimeImmutable($selectionEnd . ' 00:00:00');
+        if ($rangeEnd < $rangeStart) {
+            [$rangeStart, $rangeEnd] = [$rangeEnd, $rangeStart];
+        }
+
+        $eventRefs = json_decode($eventRefsRaw, true);
+        $eventRefs = is_array($eventRefs) ? $eventRefs : [];
+        $selectionEvents = json_decode($selectionEventsRaw, true);
+        $selectionEvents = is_array($selectionEvents) ? $selectionEvents : [];
+
+        $overrideRepo = new OverrideRepository($this->db);
+
+        if ($actionMode === 'delete') {
+            $removed = $this->deactivateCalendarEventRefs($eventRefs, $overrideRepo);
+            $this->flash('ok', sprintf('Z kalendara bolo odstranene %d planov', $removed));
+            $redirectYm = preg_match('/^\d{4}-\d{2}$/', $ym) ? $ym : $rangeStart->format('Y-m');
+            $this->redirect('/calendar?ym=' . urlencode($redirectYm));
+        }
+
+        if ($actionMode === 'copy') {
+            if ($selectionEvents === []) {
+                throw new \RuntimeException('Vo vybranom rozsahu nie su ziadne udalosti na kopirovanie');
+            }
+
+            $copyStartRaw = trim((string) ($_POST['copy_target_start'] ?? ''));
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $copyStartRaw)) {
+                throw new \RuntimeException('Zvol cielovy datum kopie');
+            }
+
+            $repeatPattern = trim((string) ($_POST['repeat_pattern'] ?? 'none'));
+            $repeatEndMode = trim((string) ($_POST['repeat_end_mode'] ?? 'count'));
+            $repeatCount = max(1, (int) ($_POST['repeat_count'] ?? '1'));
+            $repeatUntilRaw = trim((string) ($_POST['repeat_until'] ?? ''));
+
+            $created = $this->createCalendarTemplateCopies(
+                $selectionEvents,
+                $rangeStart,
+                new \DateTimeImmutable($copyStartRaw . ' 00:00:00'),
+                $repeatPattern,
+                $repeatEndMode,
+                $repeatCount,
+                $repeatUntilRaw,
+                $overrideRepo
+            );
+
+            $this->flash('ok', sprintf('Do kalendara bolo skopirovanych %d planov', $created));
+            $redirectYm = preg_match('/^\d{4}-\d{2}$/', $ym) ? $ym : $rangeStart->format('Y-m');
+            $this->redirect('/calendar?ym=' . urlencode($redirectYm));
+        }
+
+        $timeFrom = $this->normalizeTime($_POST['time_from'] ?? null);
+        $timeTo = $this->normalizeTime($_POST['time_to'] ?? null);
+        $title = trim((string) ($_POST['title'] ?? ''));
+        $targetMode = trim((string) ($_POST['target_mode'] ?? 'employee'));
+        $employeeId = (int) ($_POST['target_employee_id'] ?? 0);
+        $targetNumber = trim((string) ($_POST['target_number'] ?? ''));
+        $repeatPattern = trim((string) ($_POST['repeat_pattern'] ?? 'none'));
+        $repeatEndMode = trim((string) ($_POST['repeat_end_mode'] ?? 'count'));
+        $repeatCount = max(1, (int) ($_POST['repeat_count'] ?? '1'));
+        $repeatUntilRaw = trim((string) ($_POST['repeat_until'] ?? ''));
+
+        if ($timeFrom === null || $timeTo === null) {
+            throw new \RuntimeException('Cas od a do je povinny');
+        }
+
+        $target = $this->resolveCalendarTarget($targetMode, $employeeId, $targetNumber);
+        if ($title === '') {
+            $title = $this->buildCalendarAutoTitle($target['employee_name'], $timeFrom, $timeTo);
+        }
+
+        if ($actionMode === 'update') {
+            $this->deactivateCalendarEventRefs($eventRefs, $overrideRepo);
+        }
+
+        $created = $this->createCalendarRangeEvents(
+            $rangeStart,
+            $rangeEnd,
+            $timeFrom,
+            $timeTo,
+            $title,
+            $target,
+            $repeatPattern,
+            $repeatEndMode,
+            $repeatCount,
+            $repeatUntilRaw,
+            $overrideRepo
+        );
+
+        $this->flash('ok', sprintf('Do kalendara bolo ulozenych %d planov', $created));
+        $redirectYm = preg_match('/^\d{4}-\d{2}$/', $ym) ? $ym : $rangeStart->format('Y-m');
+        $this->redirect('/calendar?ym=' . urlencode($redirectYm));
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildCalendarEmployeeOptions(): array
+    {
+        $employees = (new EmployeeRepository($this->db))->findActive();
+
+        return array_values(array_map(static function ($employee): array {
+            $forwardTo = trim((string) ($employee->getPhoneInternal() ?? ''));
+            $source = 'interne';
+            if ($forwardTo === '') {
+                $forwardTo = trim((string) ($employee->getPhoneMobile() ?? ''));
+                $source = 'mobil';
+            }
+            if ($forwardTo === '') {
+                $forwardTo = trim((string) ($employee->getPhonePrimary() ?? ''));
+                $source = 'primarne';
+            }
+
+            return [
+                'id' => $employee->getId(),
+                'name' => $employee->getName(),
+                'forward_to' => $forwardTo,
+                'number_source' => $source,
+                'disabled' => $forwardTo === '',
+                'disabled_reason' => $forwardTo === '' ? 'Zamestnanec nema vyplnene ziadne cislo na presmerovanie.' : null,
+            ];
+        }, $employees));
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $employeeOptions
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function loadCalendarEvents(\DateTimeImmutable $monthStart, \DateTimeImmutable $monthEnd, array $employeeOptions): array
+    {
+        $employeeMap = [];
+        foreach ($employeeOptions as $employee) {
+            $employeeMap[(int) ($employee['id'] ?? 0)] = (string) ($employee['name'] ?? '');
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT *
+             FROM override_rules
+             WHERE is_active = 1
+             AND COALESCE(ends_at, expires_at, '9999-12-31 23:59:59') >= ?
+             AND COALESCE(starts_at, created_at, '1970-01-01 00:00:00') <= ?
+             ORDER BY COALESCE(starts_at, created_at) ASC, id ASC",
+            [$monthStart->format('Y-m-d H:i:s'), $monthEnd->format('Y-m-d H:i:s')]
+        );
+
+        $eventsByDay = [];
+        foreach ($rows as $row) {
+            $startAtRaw = trim((string) ($row['starts_at'] ?? $row['created_at'] ?? ''));
+            $endAtRaw = trim((string) ($row['ends_at'] ?? $row['expires_at'] ?? $startAtRaw));
+            if ($startAtRaw === '') {
+                continue;
+            }
+
+            $startAt = new \DateTimeImmutable($startAtRaw);
+            $endAt = new \DateTimeImmutable($endAtRaw !== '' ? $endAtRaw : $startAtRaw);
+            if ($endAt < $startAt) {
+                $endAt = $startAt;
+            }
+
+            $sourceEmployeeId = isset($row['source_employee_id']) && $row['source_employee_id'] !== null
+                ? (int) $row['source_employee_id']
+                : null;
+            $employeeName = ($sourceEmployeeId !== null && $sourceEmployeeId > 0) ? ($employeeMap[$sourceEmployeeId] ?? '') : '';
+            $title = trim((string) ($row['reason'] ?? ''));
+            if ($title === '') {
+                $title = $employeeName !== '' ? $employeeName : trim((string) ($row['forward_to'] ?? 'Plan'));
+            }
+
+            $dayStart = $startAt->setTime(0, 0, 0);
+            $dayEnd = $endAt->setTime(0, 0, 0);
+            for ($cursor = $dayStart; $cursor <= $dayEnd; $cursor = $cursor->modify('+1 day')) {
+                $dayKey = $cursor->format('Y-m-d');
+                $eventsByDay[$dayKey][] = [
+                    'id' => (int) ($row['id'] ?? 0),
+                    'kind' => 'override',
+                    'title' => $title,
+                    'employee_name' => $employeeName,
+                    'forward_to' => (string) ($row['forward_to'] ?? ''),
+                    'time_from' => $startAt->format('H:i'),
+                    'time_to' => $endAt->format('H:i'),
+                    'target_employee_id' => ($sourceEmployeeId !== null && $sourceEmployeeId > 0) ? $sourceEmployeeId : null,
+                    'start_date' => $startAt->format('Y-m-d'),
+                ];
+            }
+        }
+
+        return $eventsByDay;
+    }
+
+    /**
+     * @return array{forward_to: string, target_employee_id: ?int, employee_name: string}
+     */
+    private function resolveCalendarTarget(string $targetMode, int $employeeId, string $targetNumber): array
+    {
+        if ($targetMode === 'number') {
+            $targetNumber = trim($targetNumber);
+            if ($targetNumber === '') {
+                throw new \RuntimeException('Zadaj cislo pre presmerovanie');
+            }
+
+            return [
+                'forward_to' => $targetNumber,
+                'target_employee_id' => null,
+                'employee_name' => $targetNumber,
+            ];
+        }
+
+        if ($employeeId <= 0) {
+            throw new \RuntimeException('Vyber osobu pre presmerovanie');
+        }
+
+        $employee = (new EmployeeRepository($this->db))->findById($employeeId);
+        if ($employee === null || !$employee->isActive()) {
+            throw new \RuntimeException('Vybrana osoba neexistuje alebo nie je aktivna');
+        }
+
+        $forwardTo = trim((string) ($employee->getPhoneInternal() ?? ''));
+        if ($forwardTo === '') {
+            $forwardTo = trim((string) ($employee->getPhoneMobile() ?? ''));
+        }
+        if ($forwardTo === '') {
+            $forwardTo = trim((string) ($employee->getPhonePrimary() ?? ''));
+        }
+        if ($forwardTo === '') {
+            throw new \RuntimeException('Vybrana osoba nema nastavene cislo na presmerovanie');
+        }
+
+        return [
+            'forward_to' => $forwardTo,
+            'target_employee_id' => $employee->getId(),
+            'employee_name' => $employee->getName(),
+        ];
+    }
+
+    private function buildCalendarAutoTitle(string $label, string $timeFrom, string $timeTo): string
+    {
+        $label = trim($label);
+        $from = substr($timeFrom, 0, 5);
+        $to = substr($timeTo, 0, 5);
+
+        if ($label === '') {
+            return sprintf('Presmerovanie %s - %s', $from, $to);
+        }
+
+        return sprintf('%s %s - %s', $label, $from, $to);
+    }
+
+    private function createCalendarRangeEvents(
+        \DateTimeImmutable $rangeStart,
+        \DateTimeImmutable $rangeEnd,
+        string $timeFrom,
+        string $timeTo,
+        string $title,
+        array $target,
+        string $repeatPattern,
+        string $repeatEndMode,
+        int $repeatCount,
+        string $repeatUntilRaw,
+        OverrideRepository $overrideRepo,
+    ): int {
+        $rangeLength = $rangeStart->diff($rangeEnd)->days ?? 0;
+        $starts = $this->buildCalendarOccurrenceStarts($rangeStart, $repeatPattern, $repeatEndMode, $repeatCount, $repeatUntilRaw);
+        $created = 0;
+
+        foreach ($starts as $occurrenceStart) {
+            $occurrenceEnd = $occurrenceStart->modify('+' . $rangeLength . ' days');
+            for ($cursor = $occurrenceStart; $cursor <= $occurrenceEnd; $cursor = $cursor->modify('+1 day')) {
+                $startsAt = $cursor->format('Y-m-d') . ' ' . $timeFrom;
+                $overnight = $timeTo <= $timeFrom;
+                $endDate = $overnight ? $cursor->modify('+1 day') : $cursor;
+                $endsAt = $endDate->format('Y-m-d') . ' ' . $timeTo;
+
+                $overrideRepo->createOverride([
+                    'override_type' => 'until_time',
+                    'is_active' => 1,
+                    'starts_at' => $startsAt,
+                    'ends_at' => $endsAt,
+                    'expires_at' => $endsAt,
+                    'forward_to' => $target['forward_to'],
+                    'reason' => $title,
+                    'source_employee_id' => $target['target_employee_id'],
+                    'created_by' => null,
+                ]);
+                $created++;
+            }
+        }
+
+        return $created;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $templateEvents
+     */
+    private function createCalendarTemplateCopies(
+        array $templateEvents,
+        \DateTimeImmutable $sourceStart,
+        \DateTimeImmutable $destinationStart,
+        string $repeatPattern,
+        string $repeatEndMode,
+        int $repeatCount,
+        string $repeatUntilRaw,
+        OverrideRepository $overrideRepo,
+    ): int {
+        $occurrenceStarts = $this->buildCalendarOccurrenceStarts($destinationStart, $repeatPattern, $repeatEndMode, $repeatCount, $repeatUntilRaw);
+        $created = 0;
+
+        foreach ($occurrenceStarts as $occurrenceStart) {
+            foreach ($templateEvents as $event) {
+                $selectionDateRaw = (string) ($event['selection_date'] ?? '');
+                $forwardTo = trim((string) ($event['forward_to'] ?? ''));
+                $timeFrom = $this->normalizeTime((string) ($event['time_from'] ?? ''));
+                $timeTo = $this->normalizeTime((string) ($event['time_to'] ?? ''));
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectionDateRaw) || $forwardTo === '' || $timeFrom === null || $timeTo === null) {
+                    continue;
+                }
+
+                $templateDate = new \DateTimeImmutable($selectionDateRaw . ' 00:00:00');
+                $offsetDays = $sourceStart->diff($templateDate)->invert === 1
+                    ? -($sourceStart->diff($templateDate)->days ?? 0)
+                    : ($sourceStart->diff($templateDate)->days ?? 0);
+                $targetDate = $occurrenceStart->modify(($offsetDays >= 0 ? '+' : '') . $offsetDays . ' days');
+                $overnight = $timeTo <= $timeFrom;
+                $startsAt = $targetDate->format('Y-m-d') . ' ' . $timeFrom;
+                $endDate = $overnight ? $targetDate->modify('+1 day') : $targetDate;
+                $endsAt = $endDate->format('Y-m-d') . ' ' . $timeTo;
+
+                $overrideRepo->createOverride([
+                    'override_type' => 'until_time',
+                    'is_active' => 1,
+                    'starts_at' => $startsAt,
+                    'ends_at' => $endsAt,
+                    'expires_at' => $endsAt,
+                    'forward_to' => $forwardTo,
+                    'reason' => trim((string) ($event['title'] ?? '')) !== '' ? (string) $event['title'] : $forwardTo,
+                    'source_employee_id' => isset($event['target_employee_id']) && (int) $event['target_employee_id'] > 0
+                        ? (int) $event['target_employee_id']
+                        : null,
+                    'created_by' => null,
+                ]);
+                $created++;
+            }
+        }
+
+        return $created;
+    }
+
+    /**
+     * @return array<int, \DateTimeImmutable>
+     */
+    private function buildCalendarOccurrenceStarts(
+        \DateTimeImmutable $start,
+        string $repeatPattern,
+        string $repeatEndMode,
+        int $repeatCount,
+        string $repeatUntilRaw,
+    ): array {
+        $repeatPattern = in_array($repeatPattern, ['none', 'daily', 'weekly', 'monthly'], true) ? $repeatPattern : 'none';
+        if ($repeatPattern === 'none') {
+            return [$start];
+        }
+
+        $intervalSpec = match ($repeatPattern) {
+            'daily' => 'P1D',
+            'weekly' => 'P1W',
+            'monthly' => 'P1M',
+            default => 'P1D',
+        };
+
+        $repeatUntil = null;
+        if ($repeatEndMode === 'until') {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $repeatUntilRaw)) {
+                throw new \RuntimeException('Zadaj datum dokedy sa ma opakovat');
+            }
+            $repeatUntil = new \DateTimeImmutable($repeatUntilRaw . ' 23:59:59');
+        }
+
+        $starts = [];
+        $current = $start;
+        for ($i = 0; $i < 120; $i++) {
+            if ($repeatEndMode === 'count' && $i >= $repeatCount) {
+                break;
+            }
+            if ($repeatUntil !== null && $current > $repeatUntil) {
+                break;
+            }
+            $starts[] = $current;
+            $current = $current->add(new \DateInterval($intervalSpec));
+        }
+
+        if ($starts === []) {
+            throw new \RuntimeException('Opakovanie nevytvorilo ziadne terminy');
+        }
+
+        return $starts;
+    }
+
+    /**
+     * @param array<int, mixed> $eventRefs
+     */
+    private function deactivateCalendarEventRefs(array $eventRefs, OverrideRepository $overrideRepo): int
+    {
+        $removed = 0;
+        $seen = [];
+        foreach ($eventRefs as $ref) {
+            if (!is_array($ref)) {
+                continue;
+            }
+            $id = (int) ($ref['id'] ?? 0);
+            if ($id <= 0 || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $removed += $overrideRepo->deactivate($id) ? 1 : 0;
+        }
+
+        return $removed;
     }
 
     // ---------------- Layout / Helpers ----------------

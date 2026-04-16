@@ -2,7 +2,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#ffffff,#f6f8fc 30%,#f6f8fc);color:var(--text)}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
-.wrap{max-width:1200px;margin:0 auto;padding:18px}
+.wrap{max-width:1600px;margin:0 auto;padding:18px}
 .topbar{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px}
 .brand{font-weight:800;letter-spacing:.2px}
 .nav{display:flex;flex-wrap:wrap;gap:8px;font-size:14px;align-items:center;justify-content:flex-start;flex:1}
@@ -42,3 +42,56 @@ textarea{min-height:140px;font-family:ui-monospace,SFMono-Regular,Consolas,Monac
 .hidden{display:none !important}
 .table-wrap{overflow:auto}
 @media (max-width:920px){.topbar{flex-direction:column;align-items:stretch}.user{justify-content:flex-start}}
+.planner-page{display:flex;flex-direction:column;gap:16px}
+.planner-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.planner-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.planner-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.planner-card{background:linear-gradient(180deg,#fff,#f8fbff);border:1px solid var(--border);border-radius:18px;padding:16px;box-shadow:var(--shadow)}
+.planner-card-inline{padding:14px 16px}
+.planner-card-title{font-size:15px;font-weight:700;margin-bottom:8px}
+.planner-copy{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+.planner-board{background:linear-gradient(180deg,#fff,#f8fbff);border:1px solid var(--border);border-radius:20px;padding:14px;box-shadow:var(--shadow)}
+.planner-board-wide{padding:16px}
+.planner-board-head{display:flex;justify-content:flex-start;align-items:center;margin-bottom:12px}
+.planner-chip-row{display:flex;gap:8px;flex-wrap:wrap}
+.planner-chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#eef4ff;color:#1d4ed8;font-size:12px;font-weight:600;border:1px solid rgba(37,99,235,.14)}
+.planner-grid{display:grid;grid-template-columns:repeat(7,minmax(170px,1fr));gap:8px}
+.planner-dow{padding:0 6px 6px;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.planner-day{min-height:180px;border:1px solid var(--border);border-radius:18px;padding:8px;background:linear-gradient(180deg,#fff,#fdfefe);display:flex;flex-direction:column;gap:8px;text-align:left;cursor:pointer;transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease;box-shadow:0 4px 20px rgba(15,23,42,.04)}
+.planner-day:hover{border-color:rgba(37,99,235,.35);transform:translateY(-1px);box-shadow:0 10px 24px rgba(37,99,235,.08)}
+.planner-day:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.planner-day-empty{background:transparent;border:1px dashed rgba(217,222,234,.7);box-shadow:none;cursor:default}
+.planner-day-empty:hover{transform:none;border-color:rgba(217,222,234,.7);box-shadow:none}
+.planner-day.is-today{border-color:rgba(37,99,235,.6);background:linear-gradient(180deg,rgba(37,99,235,.06),#fff)}
+.planner-day.is-selected{border-color:#2563eb;background:linear-gradient(180deg,rgba(37,99,235,.13),rgba(219,234,254,.45));box-shadow:0 12px 28px rgba(37,99,235,.18)}
+.planner-day-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.planner-day-number{font-size:15px;font-weight:800}
+.planner-section{display:flex;flex-direction:column;gap:6px}
+.planner-section-muted{margin-top:auto}
+.planner-event{display:flex;flex-direction:column;gap:3px;padding:6px 8px;border-radius:12px;background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:1px solid rgba(5,150,105,.18);font-size:11px;cursor:pointer;text-align:left}
+.planner-event-line{display:flex;gap:4px;align-items:center;white-space:nowrap;overflow:hidden}
+.planner-event-time{color:#047857;font-weight:700;flex:none}
+.planner-event-title{color:#065f46;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.planner-event-meta{font-size:11px;color:#065f46;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.planner-mini{font-size:11px;color:var(--muted);line-height:1.35}
+.planner-mini-soft{color:#94a3b8;margin-left:4px}
+.planner-day-segments{padding-top:2px;border-top:1px dashed rgba(217,222,234,.9)}
+.planner-modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:20px}
+.planner-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.46);backdrop-filter:blur(3px)}
+.planner-dialog{position:relative;z-index:1;width:min(720px,100%);background:#fff;border:1px solid var(--border);border-radius:24px;padding:18px;box-shadow:0 30px 80px rgba(15,23,42,.22)}
+.planner-dialog-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px}
+.planner-form-simple{align-items:start}
+.planner-flat-select,.planner-flat-input{background:#f1f3f4;border:1px solid #f1f3f4;border-radius:10px;padding:10px 12px}
+.planner-target-switch{display:flex;gap:16px;flex-wrap:wrap;font-size:14px}
+.planner-target-switch label{display:inline-flex;align-items:center;gap:8px}
+.planner-target-switch input{width:auto}
+.planner-selection-bar{display:flex;align-items:center;gap:8px}
+.planner-selection-sep{color:var(--muted)}
+.planner-action-switch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.planner-action-card{border:1px solid #dadce0;border-radius:999px;background:#fff;padding:10px 12px;text-align:center;cursor:pointer;transition:border-color .15s ease,background .15s ease,color .15s ease}
+.planner-action-card.is-active{border-color:#1a73e8;background:#e8f0fe;color:#174ea6}
+.planner-action-card-danger.is-active{border-color:#e11d48;background:#fff1f2;color:#be123c}
+.planner-inline-note{padding:10px 12px;border-radius:12px;background:#eff6ff;border:1px solid rgba(37,99,235,.18);font-size:12px;color:#1e3a8a}
+.planner-lock{overflow:hidden}
+@media (max-width:1100px){.planner-summary{grid-template-columns:1fr}}
+@media (max-width:760px){.planner-grid{grid-template-columns:1fr}.planner-dow{display:none}.planner-day-empty{display:none}.planner-day{min-height:auto}.planner-dialog{padding:14px}.planner-action-switch{grid-template-columns:1fr}.planner-selection-bar{flex-direction:column;align-items:stretch}}
