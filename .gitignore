@@ -13,6 +13,7 @@
 /vendor/
 composer.phar
 .phpunit.result.cache
+.phpunit.cache/
 
 # Local config (keep config example committed)
 /config/config.yaml
@@ -24,3 +25,5 @@ composer.phar
 .vscode/
 .DS_Store
 Thumbs.db
+*.bak
+*.swp
